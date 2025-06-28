@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Spotify Scatter Visualizations</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+ body{font-family:'Segoe UI',Roboto,sans-serif;background:#fafafa;color:#111;margin:0;padding:0}
+ .chart{width:100%;height:350px}
+ svg{width:100%;height:100%}
+ .grid line{stroke:#ccc;stroke-dasharray:2 2}
+ circle{fill:steelblue;opacity:0.2;r:6}
+ .trend{stroke:orange;stroke-width:2;fill:none}
+ footer{padding:1em;text-align:center;font-size:0.9em;color:#555}
+ a{color:#06c}
+</style>
+</head>
+<body>
+<div id="charts"></div>
+<footer>Visualization by Codex. Data source: <a href="https://www.kaggle.com">Kaggle</a></footer>
+<script>
+fetch('scatter_data.json').then(r=>r.json()).then(data=>{
+ const cfg=[
+  {x:d=>d.pages,y:d=>d.rating,label:'Pages vs Rating'},
+  {x:d=>d.blurb,y:d=>d.rating,label:'Blurb Length vs Rating'},
+  {x:d=>Math.log10(d.reviews),y:d=>d.rating,label:'log10(Reviews) vs Rating'}
+ ];
+ cfg.forEach(c=>{
+  const div=d3.select('#charts').append('div').attr('class','chart');
+  const svg=div.append('svg');
+  const m={t:30,r:30,b:40,l:40};
+  let w,h;
+  function draw(){
+   w=parseInt(div.style('width'))-m.l-m.r;
+   h=parseInt(div.style('height'))-m.t-m.b;
+   svg.selectAll('*').remove();
+   const g=svg.append('g').attr('transform',`translate(${m.l},${m.t})`);
+   const x=d3.scaleLinear().domain(d3.extent(data,c.x)).nice().range([0,w]);
+   const y=d3.scaleLinear().domain(d3.extent(data,c.y)).nice().range([h,0]);
+   const xa=g.append('g').attr('transform',`translate(0,${h})`).call(d3.axisBottom(x));
+   const ya=g.append('g').call(d3.axisLeft(y));
+   xa.call(g=>g.selectAll('.tick line').clone().attr('y2',-h).attr('stroke-opacity',0.1));
+   ya.call(g=>g.selectAll('.tick line').clone().attr('x2',w).attr('stroke-opacity',0.1));
+   g.append('text').attr('x',w/2).attr('y',-10).attr('text-anchor','middle').text(c.label);
+   const tip=d3.select('body').append('div').style('position','absolute').style('background','#fff').style('border','1px solid #ccc').style('padding','4px').style('font-size','12px').style('pointer-events','none').style('opacity',0);
+   g.selectAll('circle').data(data).enter().append('circle')
+    .attr('cx',d=>x(c.x(d))).attr('cy',d=>y(c.y(d)))
+    .on('mousemove',(e,d)=>{tip.style('opacity',1).html(`x:${c.x(d).toFixed(2)}<br>y:${c.y(d).toFixed(2)}`).style('left',e.pageX+5+'px').style('top',e.pageY-28+'px')})
+    .on('mouseout',()=>tip.style('opacity',0));
+   const sorted=[...data].sort((a,b)=>c.x(a)-c.x(b));
+   const n=100,bw=0.3,lo=[];const [min,max]=d3.extent(sorted,c.x);
+   for(let i=0;i<n;i++){
+    const xi=min+(max-min)*i/(n-1);
+    let wsum=0,mx=0,my=0,sxx=0,sxy=0;
+    sorted.forEach(d=>{
+     const xd=c.x(d);const w=Math.exp(-Math.pow((xd-xi)/(bw*(max-min)),2));
+     const yd=c.y(d);wsum+=w;mx+=xd*w;my+=yd*w;sxx+=xd*xd*w;sxy+=xd*yd*w;
+    });
+    mx/=wsum;my/=wsum;const beta=(sxy/wsum-mx*my)/(sxx/wsum-mx*mx);
+    lo.push([xi,my+beta*(xi-mx)]);
+   }
+   g.append('path').attr('class','trend').attr('d',d3.line().curve(d3.curveMonotoneX)(lo));
+  }
+  draw();
+  window.addEventListener('resize',draw);
+ });
+});
+</script>
+</body>
+</html>
