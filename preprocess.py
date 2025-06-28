@@ -1,8 +1,8 @@
-import pandas as pd
-import numpy as np
+import argparse
 import json
 from pathlib import Path
-import argparse
+
+import pandas as pd
 
 
 def main():
@@ -12,15 +12,16 @@ def main():
     p.add_argument("--sample", type=int, default=5000, help="Maximum number of rows")
     args = p.parse_args()
 
-    df = pd.read_csv(args.csv)
-
+    df = pd.read_csv(args.csv, usecols=["pages", "desc", "reviews", "rating"])
     df["blurb"] = df["desc"].astype(str).str.len()
     cols = ["pages", "blurb", "reviews", "rating"]
     df = df.dropna(subset=cols)
 
+    mask = pd.Series(True, index=df.index)
     for c in cols:
-        q_low, q_hi = df[c].quantile([0.005, 0.995])
-        df = df[(df[c] >= q_low) & (df[c] <= q_hi)]
+        lo, hi = df[c].quantile([0.005, 0.995])
+        mask &= df[c].between(lo, hi)
+    df = df[mask]
 
     df = df.sample(min(len(df), args.sample), random_state=42)
 

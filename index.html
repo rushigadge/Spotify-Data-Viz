@@ -57,7 +57,7 @@ function draw(data){
     g.append("g").attr("class","axis").attr("transform",`translate(0,${h})`).call(d3.axisBottom(x).ticks(6));
     g.append("g").attr("class","axis").call(d3.axisLeft(y).ticks(6));
     g.selectAll("circle").data(data).join("circle")
-      .attr("r",3).attr("cx",d=>x(p.x(d))).attr("cy",d=>y(p.y(d)))
+      .attr("r",6).attr("cx",d=>x(p.x(d))).attr("cy",d=>y(p.y(d)))
       .on("mouseover",(e,d)=>{tooltip.style("opacity",1).html(`${p.labelX}: ${p.x(d).toFixed(2)}<br>Rating: ${d.rating}`);})
       .on("mousemove",e=>tooltip.style("left",e.pageX+5+"px").style("top",e.pageY-28+"px"))
       .on("mouseout",()=>tooltip.style("opacity",0));
