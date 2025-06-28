@@ -3,45 +3,32 @@ import json
 import os
 import sys
 
-# CLI script to preprocess dataset
+"""Preprocess Spotify dataset for scatter plots.
+Reads 'spotify dataset.csv', filters numeric columns by percentile,
+randomly samples up to 5k rows (seed=42) and writes 'scatter_data.json'.
+Prints the resulting file size in bytes."""
 
 def main():
-    csv_file = 'spotify dataset.csv'
-    if not os.path.exists(csv_file):
-        print(f"{csv_file} not found", file=sys.stderr)
+    src='spotify dataset.csv'
+    if not os.path.exists(src):
+        print(f"{src} not found", file=sys.stderr)
         sys.exit(1)
 
-    df = pd.read_csv(csv_file)
+    df=pd.read_csv(src)
 
-    # Map dataset columns to required ones
-    # 'pages' from duration_ms
-    df['pages'] = df['duration_ms']
-    # 'blurb' length from track_name
-    df['blurb'] = df['track_name'].astype(str).str.len()
-    # 'reviews' from tempo
-    df['reviews'] = df['tempo']
-    # 'rating' from popularity
-    df['rating'] = df['popularity']
+    df=df.rename(columns={'duration_ms':'pages','tempo':'reviews','popularity':'rating'})
+    df['blurb']=df['track_name'].astype(str).str.len()
+    cols=['pages','blurb','reviews','rating']
 
-    cols = ['pages', 'blurb', 'reviews', 'rating']
-
-    # Filter rows within 0.5-99.5 percentile for each numeric column
     for c in cols:
-        lower = df[c].quantile(0.005)
-        upper = df[c].quantile(0.995)
-        df = df[(df[c] >= lower) & (df[c] <= upper)]
+        q=df[c].quantile([0.005,0.995])
+        df=df[df[c].between(q.iloc[0], q.iloc[1])]
 
-    # Sample at most 5000 rows
-    df_sample = df.sample(n=min(len(df), 5000), random_state=42)
+    sample=df.sample(n=min(len(df),5000), random_state=42).sort_values('pages')
+    with open('scatter_data.json','w') as f:
+        json.dump(sample[cols].to_dict('records'), f, separators=(',', ':'), ensure_ascii=False)
 
-    records = df_sample[cols].to_dict(orient='records')
+    print(os.path.getsize('scatter_data.json'))
 
-    out_file = 'scatter_data.json'
-    with open(out_file, 'w') as f:
-        json.dump(records, f, separators=(',', ':'), ensure_ascii=False)
-
-    size = os.path.getsize(out_file)
-    print(size)
-
-if __name__ == '__main__':
+if __name__=='__main__':
     main()

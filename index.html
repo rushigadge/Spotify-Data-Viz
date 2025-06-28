@@ -3,62 +3,68 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Spotify Scatter Visualizations</title>
+<title>Mapping Spotify: Tempo, Words and Popularity</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <style>
- body{font-family:'Segoe UI',Roboto,sans-serif;background:#fafafa;color:#111;margin:0;padding:0}
- .chart{width:100%;height:350px}
+ body{margin:0;padding:0;font-family:"Georgia","Times New Roman",serif;background:#f8f8f8;color:#111;line-height:1.5}
+ h1,h2{font-family:"Helvetica Neue",Arial,sans-serif;margin:0 0 .5em}
+ section{max-width:960px;margin:auto;padding:1em}
+ .chart{height:350px;margin-bottom:2em}
  svg{width:100%;height:100%}
- .grid line{stroke:#ccc;stroke-dasharray:2 2}
+ .grid line{stroke:#ccc;stroke-dasharray:2}
  circle{fill:steelblue;opacity:0.2;r:6}
- .trend{stroke:orange;stroke-width:2;fill:none}
- footer{padding:1em;text-align:center;font-size:0.9em;color:#555}
+ .trend{stroke:#e07a1f;stroke-width:2;fill:none}
+ .tooltip{position:absolute;background:#fff;border:1px solid #ccc;padding:4px;font-size:12px;pointer-events:none;opacity:0}
+ footer{padding:1em;text-align:center;font-size:.9em;color:#555}
  a{color:#06c}
 </style>
 </head>
 <body>
+<section>
+<h1>How Spotify Tracks Compare</h1>
+<p>This short story explores 5,000 Spotify songs, trimmed to remove outliers. We examine whether longer songs, more words in the title, or faster tempos align with higher popularity scores.</p>
 <div id="charts"></div>
-<footer>Visualization by Codex. Data source: <a href="https://www.kaggle.com">Kaggle</a></footer>
+<p>The scatter plots show that none of these factors strongly predict popularity. Duration shows virtually no correlation, while track name length trends slightly downward. Faster tempos seem to lift ratings just a bit.</p>
+</section>
+<footer>Visualization by Codex using data from <a href="https://www.kaggle.com">Kaggle</a>.</footer>
 <script>
 fetch('scatter_data.json').then(r=>r.json()).then(data=>{
  const cfg=[
-  {x:d=>d.pages,y:d=>d.rating,label:'Pages vs Rating'},
-  {x:d=>d.blurb,y:d=>d.rating,label:'Blurb Length vs Rating'},
-  {x:d=>Math.log10(d.reviews),y:d=>d.rating,label:'log10(Reviews) vs Rating'}
+  {x:d=>d.pages,label:'Duration (ms)',caption:'Song length vs Rating'},
+  {x:d=>d.blurb,label:'Title length (chars)',caption:'Words vs Rating'},
+  {x:d=>Math.log10(d.reviews),label:'log10 Tempo',caption:'Tempo vs Rating'}
  ];
  cfg.forEach(c=>{
   const div=d3.select('#charts').append('div').attr('class','chart');
   const svg=div.append('svg');
-  const m={t:30,r:30,b:40,l:40};
+  const margin={t:40,r:30,b:40,l:50};
+  const tip=d3.select('body').append('div').attr('class','tooltip');
   let w,h;
   function draw(){
-   w=parseInt(div.style('width'))-m.l-m.r;
-   h=parseInt(div.style('height'))-m.t-m.b;
+   w=parseInt(div.style('width'))-margin.l-margin.r;
+   h=parseInt(div.style('height'))-margin.t-margin.b;
    svg.selectAll('*').remove();
-   const g=svg.append('g').attr('transform',`translate(${m.l},${m.t})`);
+   const g=svg.append('g').attr('transform',`translate(${margin.l},${margin.t})`);
    const x=d3.scaleLinear().domain(d3.extent(data,c.x)).nice().range([0,w]);
-   const y=d3.scaleLinear().domain(d3.extent(data,c.y)).nice().range([h,0]);
+   const y=d3.scaleLinear().domain(d3.extent(data,d=>d.rating)).nice().range([h,0]);
    const xa=g.append('g').attr('transform',`translate(0,${h})`).call(d3.axisBottom(x));
    const ya=g.append('g').call(d3.axisLeft(y));
    xa.call(g=>g.selectAll('.tick line').clone().attr('y2',-h).attr('stroke-opacity',0.1));
    ya.call(g=>g.selectAll('.tick line').clone().attr('x2',w).attr('stroke-opacity',0.1));
-   g.append('text').attr('x',w/2).attr('y',-10).attr('text-anchor','middle').text(c.label);
-   const tip=d3.select('body').append('div').style('position','absolute').style('background','#fff').style('border','1px solid #ccc').style('padding','4px').style('font-size','12px').style('pointer-events','none').style('opacity',0);
+   g.append('text').attr('x',w/2).attr('y',-10).attr('text-anchor','middle').attr('font-weight','bold').text(c.caption);
    g.selectAll('circle').data(data).enter().append('circle')
-    .attr('cx',d=>x(c.x(d))).attr('cy',d=>y(c.y(d)))
-    .on('mousemove',(e,d)=>{tip.style('opacity',1).html(`x:${c.x(d).toFixed(2)}<br>y:${c.y(d).toFixed(2)}`).style('left',e.pageX+5+'px').style('top',e.pageY-28+'px')})
+    .attr('cx',d=>x(c.x(d)))
+    .attr('cy',d=>y(d.rating))
+    .on('mousemove',(e,d)=>tip.style('opacity',1).html(`${c.label}: ${c.x(d).toFixed(2)}<br>Rating: ${d.rating}`)
+      .style('left',e.pageX+5+'px').style('top',e.pageY-30+'px'))
     .on('mouseout',()=>tip.style('opacity',0));
    const sorted=[...data].sort((a,b)=>c.x(a)-c.x(b));
-   const n=100,bw=0.3,lo=[];const [min,max]=d3.extent(sorted,c.x);
+   const n=100,bw=0.3,lo=[],[min,max]=d3.extent(sorted,c.x);
    for(let i=0;i<n;i++){
     const xi=min+(max-min)*i/(n-1);
-    let wsum=0,mx=0,my=0,sxx=0,sxy=0;
-    sorted.forEach(d=>{
-     const xd=c.x(d);const w=Math.exp(-Math.pow((xd-xi)/(bw*(max-min)),2));
-     const yd=c.y(d);wsum+=w;mx+=xd*w;my+=yd*w;sxx+=xd*xd*w;sxy+=xd*yd*w;
-    });
-    mx/=wsum;my/=wsum;const beta=(sxy/wsum-mx*my)/(sxx/wsum-mx*mx);
-    lo.push([xi,my+beta*(xi-mx)]);
+    let mx=0,my=0,sxx=0,sxy=0,wSum=0;
+    sorted.forEach(d=>{const xd=c.x(d),w=Math.exp(-Math.pow((xd-xi)/(bw*(max-min)),2)),yd=d.rating;wSum+=w;mx+=xd*w;my+=yd*w;sxx+=xd*xd*w;sxy+=xd*yd*w;});
+    mx/=wSum;my/=wSum;const beta=(sxy/wSum-mx*my)/(sxx/wSum-mx*mx);lo.push([xi,my+beta*(xi-mx)]);
    }
    g.append('path').attr('class','trend').attr('d',d3.line().curve(d3.curveMonotoneX)(lo));
   }
