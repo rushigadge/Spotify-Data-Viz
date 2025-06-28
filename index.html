@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GoodReads Books Visualization</title>
+<style>
+body{font-family:'Segoe UI',Roboto,sans-serif;background:#fdfdfd;color:#111;margin:0}
+.plot{width:100%;height:350px}
+.axis path,.axis line{stroke:#666}
+.grid line{stroke:#ccc;stroke-opacity:.5}
+circle{fill:steelblue;opacity:.2}
+.tooltip{position:absolute;pointer-events:none;background:#fff;border:1px solid #999;padding:4px;font-size:12px}
+</style>
+</head>
+<body>
+<div id="plots"></div>
+<footer style="padding:1em;text-align:center">
+  Visualization by <a href="https://openai.com">Assistant</a>. Data from <a href="https://goodreads.com">GoodReads</a>.
+</footer>
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<script>
+const margin={top:20,right:30,bottom:40,left:50};
+const tooltip=d3.select("body").append("div").attr("class","tooltip").style("opacity",0);
+function loess(data,x,y,band=0.3,n=100){
+  const pts=data.map(d=>[x(d),y(d)]).sort((a,b)=>a[0]-b[0]);
+  const xs=pts.map(d=>d[0]),xr=d3.extent(xs);
+  const step=(xr[1]-xr[0])/(n-1),res=[];
+  for(let i=0;i<n;i++){
+    const x0=xr[0]+i*step,dist=xs.map(d=>Math.abs(d-x0));
+    const bw=d3.quantile(dist.sort((a,b)=>a-b),band);
+    let ys=0,ws=0;
+    pts.forEach((p,j)=>{
+      const w=Math.pow(Math.max(0,1-Math.pow(dist[j]/bw,3)),3);
+      ys+=w*p[1];ws+=w;
+    });
+    res.push([x0,ys/ws]);
+  }
+  return res;
+}
+function draw(data){
+  const plots=[
+    {x:d=>d.pages,labelX:'Pages',y:d=>d.rating,labelY:'Rating'},
+    {x:d=>d.blurb,labelX:'Blurb Length',y:d=>d.rating,labelY:'Rating'},
+    {x:d=>Math.log10(d.reviews),labelX:'log10(Reviews)',y:d=>d.rating,labelY:'Rating'}
+  ];
+  const container=d3.select("#plots").selectAll(".plot")
+    .data(plots).join("svg").attr("class","plot");
+  container.each(function(p){
+    const svg=d3.select(this),w=this.clientWidth-margin.left-margin.right,h=350-margin.top-margin.bottom;
+    svg.selectAll("*").remove();
+    const g=svg.append("g").attr("transform",`translate(${margin.left},${margin.top})`);
+    const x=d3.scaleLinear().domain(d3.extent(data,p.x)).nice().range([0,w]);
+    const y=d3.scaleLinear().domain(d3.extent(data,p.y)).nice().range([h,0]);
+    g.append("g").attr("class","grid").attr("transform",`translate(0,${h})`).call(d3.axisBottom(x).tickSize(-h).tickFormat(""));
+    g.append("g").attr("class","grid").call(d3.axisLeft(y).tickSize(-w).tickFormat(""));
+    g.append("g").attr("class","axis").attr("transform",`translate(0,${h})`).call(d3.axisBottom(x).ticks(6));
+    g.append("g").attr("class","axis").call(d3.axisLeft(y).ticks(6));
+    g.selectAll("circle").data(data).join("circle")
+      .attr("r",6).attr("cx",d=>x(p.x(d))).attr("cy",d=>y(p.y(d)))
+      .on("mouseover",(e,d)=>{tooltip.style("opacity",1).html(`${p.labelX}: ${p.x(d).toFixed(2)}<br>Rating: ${d.rating}`);})
+      .on("mousemove",e=>tooltip.style("left",e.pageX+5+"px").style("top",e.pageY-28+"px"))
+      .on("mouseout",()=>tooltip.style("opacity",0));
+    const trend=loess(data,p.x,p.y);
+    g.append("path").datum(trend).attr("fill","none").attr("stroke","orange").attr("stroke-width",2)
+      .attr("d",d3.line().x(d=>x(d[0])).y(d=>y(d[1])));
+    svg.append("text").attr("x",margin.left+w/2).attr("y",h+margin.top+30).attr("text-anchor","middle").text(p.labelX);
+    svg.append("text").attr("transform","rotate(-90)").attr("x",-margin.top-h/2).attr("y",15).attr("text-anchor","middle").text(p.labelY);
+  });
+}
+fetch('scatter_data.json').then(r=>r.json()).then(d=>{draw(d);window.addEventListener('resize',()=>draw(d));});
+</script>
+</body>
+</html>
