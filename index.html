@@ -2,75 +2,55 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Mapping Spotify: Tempo, Words and Popularity</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spotify Story: Beyond the Hits</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <style>
- body{margin:0;padding:0;font-family:"Georgia","Times New Roman",serif;background:#f8f8f8;color:#111;line-height:1.5}
- h1,h2{font-family:"Helvetica Neue",Arial,sans-serif;margin:0 0 .5em}
+ body{font-family:Roboto,Segoe UI,Arial,sans-serif;margin:0;background:#fafafa;color:#333;line-height:1.6}
+ h1,h2{font-family:Georgia,"Times New Roman",serif;margin:0 0 .5em}
  section{max-width:960px;margin:auto;padding:1em}
- .chart{height:350px;margin-bottom:2em}
- svg{width:100%;height:100%}
- .grid line{stroke:#ccc;stroke-dasharray:2}
- circle{fill:steelblue;opacity:0.2;r:6}
- .trend{stroke:#e07a1f;stroke-width:2;fill:none}
- .tooltip{position:absolute;background:#fff;border:1px solid #ccc;padding:4px;font-size:12px;pointer-events:none;opacity:0}
+ #charts>div{margin:2em 0}
+ svg{width:100%;height:400px}
+ .bar{fill:#4e79a7}
+ .bar2{fill:#f28e2b}
+ .pieArc{stroke:#fff}
+ .point{fill:#4e79a7;opacity:.3}
+ .trend{stroke:#e15759;stroke-width:2;fill:none}
+ .tooltip{position:absolute;pointer-events:none;background:#fff;border:1px solid #ccc;padding:4px;font-size:12px;opacity:0}
  footer{padding:1em;text-align:center;font-size:.9em;color:#555}
- a{color:#06c}
 </style>
 </head>
 <body>
 <section>
-<h1>How Spotify Tracks Compare</h1>
-<p>This short story explores 5,000 Spotify songs, trimmed to remove outliers. We examine whether longer songs, more words in the title, or faster tempos align with higher popularity scores.</p>
-<div id="charts"></div>
-<p>The scatter plots show that none of these factors strongly predict popularity. Duration shows virtually no correlation, while track name length trends slightly downward. Faster tempos seem to lift ratings just a bit.</p>
+<h1>Exploring Spotify's Hidden Patterns</h1>
+<p>We sampled five thousand songs from Spotify to uncover trends beyond simple popularity. Use the genre filter to see how different styles behave.</p>
+<label for="genre-select">Genre:</label>
+<select id="genre-select"></select>
+<div id="charts">
+ <div id="scatter"></div>
+ <div id="radar"></div>
+ <div id="bar"></div>
+ <div id="pie"></div>
+ <div id="dumbbell"></div>
+</div>
 </section>
-<footer>Visualization by Codex using data from <a href="https://www.kaggle.com">Kaggle</a>.</footer>
+<footer>Visualization by Codex &mdash; Data: <a href="https://www.kaggle.com">Kaggle</a></footer>
 <script>
 fetch('scatter_data.json').then(r=>r.json()).then(data=>{
- const cfg=[
-  {x:d=>d.pages,label:'Duration (ms)',caption:'Song length vs Rating'},
-  {x:d=>d.blurb,label:'Title length (chars)',caption:'Words vs Rating'},
-  {x:d=>Math.log10(d.reviews),label:'log10 Tempo',caption:'Tempo vs Rating'}
- ];
- cfg.forEach(c=>{
-  const div=d3.select('#charts').append('div').attr('class','chart');
-  const svg=div.append('svg');
-  const margin={t:40,r:30,b:40,l:50};
-  const tip=d3.select('body').append('div').attr('class','tooltip');
-  let w,h;
-  function draw(){
-   w=parseInt(div.style('width'))-margin.l-margin.r;
-   h=parseInt(div.style('height'))-margin.t-margin.b;
-   svg.selectAll('*').remove();
-   const g=svg.append('g').attr('transform',`translate(${margin.l},${margin.t})`);
-   const x=d3.scaleLinear().domain(d3.extent(data,c.x)).nice().range([0,w]);
-   const y=d3.scaleLinear().domain(d3.extent(data,d=>d.rating)).nice().range([h,0]);
-   const xa=g.append('g').attr('transform',`translate(0,${h})`).call(d3.axisBottom(x));
-   const ya=g.append('g').call(d3.axisLeft(y));
-   xa.call(g=>g.selectAll('.tick line').clone().attr('y2',-h).attr('stroke-opacity',0.1));
-   ya.call(g=>g.selectAll('.tick line').clone().attr('x2',w).attr('stroke-opacity',0.1));
-   g.append('text').attr('x',w/2).attr('y',-10).attr('text-anchor','middle').attr('font-weight','bold').text(c.caption);
-   g.selectAll('circle').data(data).enter().append('circle')
-    .attr('cx',d=>x(c.x(d)))
-    .attr('cy',d=>y(d.rating))
-    .on('mousemove',(e,d)=>tip.style('opacity',1).html(`${c.label}: ${c.x(d).toFixed(2)}<br>Rating: ${d.rating}`)
-      .style('left',e.pageX+5+'px').style('top',e.pageY-30+'px'))
-    .on('mouseout',()=>tip.style('opacity',0));
-   const sorted=[...data].sort((a,b)=>c.x(a)-c.x(b));
-   const n=100,bw=0.3,lo=[],[min,max]=d3.extent(sorted,c.x);
-   for(let i=0;i<n;i++){
-    const xi=min+(max-min)*i/(n-1);
-    let mx=0,my=0,sxx=0,sxy=0,wSum=0;
-    sorted.forEach(d=>{const xd=c.x(d),w=Math.exp(-Math.pow((xd-xi)/(bw*(max-min)),2)),yd=d.rating;wSum+=w;mx+=xd*w;my+=yd*w;sxx+=xd*xd*w;sxy+=xd*yd*w;});
-    mx/=wSum;my/=wSum;const beta=(sxy/wSum-mx*my)/(sxx/wSum-mx*mx);lo.push([xi,my+beta*(xi-mx)]);
-   }
-   g.append('path').attr('class','trend').attr('d',d3.line().curve(d3.curveMonotoneX)(lo));
-  }
-  draw();
-  window.addEventListener('resize',draw);
- });
+ const genres=Array.from(d3.rollup(data,v=>v.length,d=>d.genre)).sort((a,b)=>b[1]-a[1]).slice(0,10).map(d=>d[0]);
+ genres.unshift('All');
+ d3.select('#genre-select').selectAll('option').data(genres).enter().append('option').attr('value',d=>d).text(d=>d);
+ const tip=d3.select('body').append('div').attr('class','tooltip');
+ function filtered(){const g=d3.select('#genre-select').property('value');return g==='All'?data:data.filter(d=>d.genre===g)}
+ d3.select('#genre-select').on('change',drawAll);
+ drawAll();
+ function drawAll(){const subset=filtered();drawScatter(subset);drawRadar(subset)}
+ drawBar(data);drawPie(data);drawDumbbell(data);
+ function drawScatter(dat){const div=d3.select('#scatter');div.selectAll('*').remove();const svg=div.append('svg');const m={t:20,r:20,b:40,l:50};const w=svg.node().clientWidth-m.l-m.r;const h=400-m.t-m.b;const g=svg.append('g').attr('transform',`translate(${m.l},${m.t})`);const x=d3.scaleLinear().domain(d3.extent(dat,d=>d.pages)).nice().range([0,w]);const y=d3.scaleLinear().domain(d3.extent(dat,d=>d.rating)).nice().range([h,0]);g.append('g').attr('transform',`translate(0,${h})`).call(d3.axisBottom(x));g.append('g').call(d3.axisLeft(y));g.selectAll('.grid-x').data(x.ticks()).enter().append('line').attr('y2',h).attr('x1',d=>x(d)).attr('x2',d=>x(d)).attr('stroke','#ddd');g.selectAll('.grid-y').data(y.ticks()).enter().append('line').attr('x2',w).attr('y1',d=>y(d)).attr('y2',d=>y(d)).attr('stroke','#ddd');g.selectAll('circle').data(dat).enter().append('circle').attr('class','point').attr('cx',d=>x(d.pages)).attr('cy',d=>y(d.rating)).attr('r',5).on('mousemove',(e,d)=>tip.style('opacity',1).html(`dur:${d.pages}<br>rate:${d.rating}`).style('left',e.pageX+5+'px').style('top',e.pageY-30+'px')).on('mouseout',()=>tip.style('opacity',0));const sorted=[...dat].sort((a,b)=>a.pages-b.pages);const n=80,bw=0.3,lo=[],[min,max]=d3.extent(sorted,d=>d.pages);for(let i=0;i<n;i++){const xi=min+(max-min)*i/(n-1);let mx=0,my=0,sxx=0,sxy=0,wSum=0;sorted.forEach(d=>{const xd=d.pages,w=Math.exp(-Math.pow((xd-xi)/(bw*(max-min)),2)),yd=d.rating;wSum+=w;mx+=xd*w;my+=yd*w;sxx+=xd*xd*w;sxy+=xd*yd*w});mx/=wSum;my/=wSum;const beta=(sxy/wSum-mx*my)/(sxx/wSum-mx*mx);lo.push([xi,my+beta*(xi-mx)])}g.append('path').attr('class','trend').attr('d',d3.line().curve(d3.curveMonotoneX)(lo));}
+ function drawRadar(dat){const div=d3.select('#radar');div.selectAll('*').remove();const svg=div.append('svg');const m=40;const r=Math.min(svg.node().clientWidth,400)/2-m;const g=svg.append('g').attr('transform',`translate(${r+m},${r+m})`);const feats=['danceability','energy','valence','acousticness'];const avg=feats.map(f=>d3.mean(dat,d=>d[f]));const scale=d3.scaleLinear().domain([0,1]).range([0,r]);const angle=d3.scaleBand().domain(feats).range([0,2*Math.PI]);g.selectAll('.axis').data(feats).enter().append('line').attr('x1',0).attr('y1',0).attr('x2',d=>scale(1)*Math.cos(angle(d)-Math.PI/2)).attr('y2',d=>scale(1)*Math.sin(angle(d)-Math.PI/2)).attr('stroke','#999');g.selectAll('.label').data(feats).enter().append('text').attr('x',d=>scale(1.1)*Math.cos(angle(d)-Math.PI/2)).attr('y',d=>scale(1.1)*Math.sin(angle(d)-Math.PI/2)).attr('text-anchor','middle').attr('dy','0.35em').text(d=>d);g.append('polygon').attr('points',avg.map((v,i)=>[scale(v)*Math.cos(angle(feats[i])-Math.PI/2),scale(v)*Math.sin(angle(feats[i])-Math.PI/2)].join(',')).attr('fill','#4e79a7').attr('opacity',0.4).attr('stroke','#4e79a7');}
+ function drawBar(dat){const div=d3.select('#bar');div.selectAll('*').remove();const svg=div.append('svg');const m={t:20,r:20,b:40,l:40};const w=svg.node().clientWidth-m.l-m.r;const h=400-m.t-m.b;const g=svg.append('g').attr('transform',`translate(${m.l},${m.t})`);const vals=d3.rollup(dat,v=>d3.mean(v,d=>d.rating),d=>d.explicit?"Explicit":"Clean");const x=d3.scaleBand().domain(Array.from(vals.keys())).range([0,w]).padding(0.2);const y=d3.scaleLinear().domain([0,d3.max(vals.values())]).nice().range([h,0]);g.append('g').attr('transform',`translate(0,${h})`).call(d3.axisBottom(x));g.append('g').call(d3.axisLeft(y));g.selectAll('.bar').data(Array.from(vals)).enter().append('rect').attr('class','bar').attr('x',d=>x(d[0])).attr('y',d=>y(d[1])).attr('height',d=>h-y(d[1])).attr('width',x.bandwidth());}
+ function drawPie(dat){const div=d3.select('#pie');div.selectAll('*').remove();const svg=div.append('svg');const r=Math.min(svg.node().clientWidth,400)/2-20;const g=svg.append('g').attr('transform',`translate(${r+20},${r+20})`);const vals=d3.rollup(dat,v=>v.length,d=>d.explicit?"Explicit":"Clean");const pie=d3.pie().value(d=>d[1])(Array.from(vals));const arc=d3.arc().innerRadius(0).outerRadius(r);g.selectAll('path').data(pie).enter().append('path').attr('class','pieArc').attr('d',arc).attr('fill',(d,i)=>['#4e79a7','#f28e2b'][i]).append('title').text(d=>`${d.data[0]}: ${d.data[1]}`);}
+ function drawDumbbell(dat){const div=d3.select('#dumbbell');div.selectAll('*').remove();const svg=div.append('svg');const m={t:20,r:80,b:40,l:80};const w=svg.node().clientWidth-m.l-m.r;const h=400-m.t-m.b;const g=svg.append('g').attr('transform',`translate(${m.l},${m.t})`);const top=d3.rollups(dat,v=>({c:v.length,e:d3.mean(v.filter(d=>d.explicit),d=>d.rating) || 0,n:d3.mean(v.filter(d=>!d.explicit),d=>d.rating) || 0}),d=>d.genre).sort((a,b)=>b[1].c-a[1].c).slice(0,5);const y=d3.scaleBand().domain(top.map(d=>d[0])).range([0,h]).padding(0.5);const x=d3.scaleLinear().domain([0,d3.max(top,d=>Math.max(d[1].e,d[1].n))]).nice().range([0,w]);g.append('g').attr('transform',`translate(0,${h})`).call(d3.axisBottom(x));g.append('g').call(d3.axisLeft(y));const line=g.selectAll('g.line').data(top).enter().append('g');line.append('line').attr('x1',d=>x(d[1].n)).attr('x2',d=>x(d[1].e)).attr('y1',d=>y(d[0])+y.bandwidth()/2).attr('y2',d=>y(d[0])+y.bandwidth()/2).attr('stroke','#999');line.append('circle').attr('cx',d=>x(d[1].n)).attr('cy',d=>y(d[0])+y.bandwidth()/2).attr('r',6).attr('fill','#4e79a7');line.append('circle').attr('cx',d=>x(d[1].e)).attr('cy',d=>y(d[0])+y.bandwidth()/2).attr('r',6).attr('fill','#f28e2b');}
 });
 </script>
 </body>
