@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spotify Genre Story</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+ body{margin:0;font-family:'Helvetica Neue',Arial,sans-serif;background:#fefefe;color:#222;line-height:1.5}
+ h1,h2{font-family:Georgia,'Times New Roman',serif;margin:0 0 .5em}
+ header,section{max-width:960px;margin:auto;padding:1em}
+ #controls{margin:1em 0}
+ figure{margin:2em 0}
+ svg{width:100%;height:350px}
+ .point{fill:#1f77b4;opacity:.3}
+ .trend{stroke:#ff7f0e;stroke-width:2;fill:none}
+ .bar{fill:#1db954}
+ .bar2{fill:#f28e2b}
+ .pieArc{stroke:#fff}
+ .dumb-line{stroke:#999;stroke-width:2}
+ .tooltip{position:absolute;pointer-events:none;background:#fff;border:1px solid #ccc;padding:4px;font-size:12px;opacity:0}
+ footer{text-align:center;padding:1em;font-size:.9em;color:#666}
+</style>
+</head>
+<body>
+<header>
+<h1>Mapping the Pulse of Spotify</h1>
+<p class="intro">What makes a track stand out? We dug into five thousand songs to uncover how length, popularity and energy differ across genres. Explore the story below and switch genres for a closer look.</p>
+<div id="controls"><label for="genre-select">Genre:</label>
+<select id="genre-select"></select></div>
+</header>
+<section id="charts">
+<figure id="scatter"><h2>Pages vs Rating</h2></figure>
+<figure id="radar"><h2>Sonic Profile</h2></figure>
+<figure id="bar"><h2>Average Rating by Genre</h2></figure>
+<figure id="pie"><h2>Explicit Share</h2></figure>
+<figure id="dumbbell"><h2>Explicit vs Clean Rating</h2></figure>
+</section>
+<footer>Visualization by Codex &mdash; Source: <a href="https://www.kaggle.com">Kaggle</a></footer>
+<script>
+fetch('scatter_data.json').then(r=>r.json()).then(data=>{
+  const genres=['All',...Array.from(new Set(data.map(d=>d.genre))).sort()];
+  d3.select('#genre-select').selectAll('option')
+    .data(genres).enter().append('option')
+    .attr('value',d=>d).text(d=>d);
+  const tip=d3.select('body').append('div').attr('class','tooltip');
+  d3.select('#genre-select').on('change',update);
+  d3.select(window).on('resize',update);
+  update();
+  function filter(){
+    const g=d3.select('#genre-select').property('value');
+    return g==='All'?data:data.filter(d=>d.genre===g);
+  }
+  function update(){
+    const dat=filter();
+    drawScatter(dat);drawRadar(dat);drawBar(dat);drawPie(dat);drawDumbbell(dat);
+  }
+  function drawScatter(dat){
+    const div=d3.select('#scatter');div.selectAll('svg').remove();
+    const m={t:20,r:20,b:40,l:60},w=div.node().clientWidth-m.l-m.r,h=350-m.t-m.b;
+    const x=d3.scaleLinear().domain(d3.extent(dat,d=>d.pages)).range([0,w]);
+    const y=d3.scaleLinear().domain([0,d3.max(dat,d=>d.rating)]).range([h,0]);
+    const svg=div.append('svg').attr('width',w+m.l+m.r).attr('height',h+m.t+m.b);
+    const g=svg.append('g').attr('transform',`translate(${m.l},${m.t})`);
+    g.append('g').attr('transform',`translate(0,${h})`).call(d3.axisBottom(x));
+    g.append('g').call(d3.axisLeft(y));
+    g.append('g').call(d3.axisLeft(y).tickSize(-w).tickFormat(''))
+      .attr('stroke-opacity',0.1);
+    g.selectAll('circle').data(dat).enter().append('circle')
+      .attr('class','point').attr('cx',d=>x(d.pages)).attr('cy',d=>y(d.rating)).attr('r',3)
+      .on('mousemove',(e,d)=>tip.style('opacity',1).html(`pages:${d.pages}<br>rating:${d.rating}`)
+        .style('left',(e.pageX+5)+'px').style('top',(e.pageY+5)+'px'))
+      .on('mouseout',()=>tip.style('opacity',0));
+    const loess=d3.regressionLoess().x(d=>d.pages).y(d=>d.rating);
+    g.append('path').datum(loess(dat)).attr('class','trend')
+      .attr('d',d3.line().x(d=>x(d[0])).y(d=>y(d[1])));
+  }
+  function drawRadar(dat){
+    const div=d3.select('#radar');div.selectAll('svg').remove();
+    const features=['danceability','energy','valence','acousticness'];
+    const avg=features.map(f=>d3.mean(dat,d=>d[f]));
+    const r=120,m=40,angle=d3.scaleBand().domain(d3.range(features.length)).range([0,Math.PI*2]);
+    const rad=d3.scaleLinear().domain([0,1]).range([0,r]);
+    const svg=div.append('svg').attr('width',r*2+m*2).attr('height',r*2+m*2);
+    const g=svg.append('g').attr('transform',`translate(${r+m},${r+m})`);
+    g.selectAll('.axis').data(features).enter().append('line')
+      .attr('x1',0).attr('y1',0)
+      .attr('x2',(d,i)=>rad(1)*Math.sin(angle(i)))
+      .attr('y2',(d,i)=>-rad(1)*Math.cos(angle(i)))
+      .attr('stroke','#ccc');
+    g.append('polygon').attr('fill','#1db95433').attr('stroke','#1db954')
+      .attr('points',avg.map((v,i)=>[rad(v)*Math.sin(angle(i)), -rad(v)*Math.cos(angle(i))].join(',')).join(' '));
+    g.selectAll('text').data(features).enter().append('text')
+      .attr('x',(d,i)=>rad(1.1)*Math.sin(angle(i)))
+      .attr('y',(d,i)=>-rad(1.1)*Math.cos(angle(i)))
+      .attr('text-anchor','middle').attr('dy','0.35em').text(d=>d);
+  }
+  function drawBar(dat){
+    const div=d3.select('#bar');div.selectAll('svg').remove();
+    const m={t:20,r:20,b:40,l:100},w=div.node().clientWidth-m.l-m.r,h=350-m.t-m.b;
+    const grp=d3.rollups(dat,v=>d3.mean(v,d=>d.rating),d=>d.genre)
+               .sort((a,b)=>b[1]-a[1]).slice(0,7);
+    const x=d3.scaleLinear().domain([0,d3.max(grp,d=>d[1])]).range([0,w]);
+    const y=d3.scaleBand().domain(grp.map(d=>d[0])).range([0,h]).padding(0.1);
+    const svg=div.append('svg').attr('width',w+m.l+m.r).attr('height',h+m.t+m.b);
+    const g=svg.append('g').attr('transform',`translate(${m.l},${m.t})`);
+    g.selectAll('rect').data(grp).enter().append('rect')
+      .attr('class','bar').attr('y',d=>y(d[0])).attr('width',d=>x(d[1]))
+      .attr('height',y.bandwidth());
+    g.append('g').attr('transform',`translate(0,${h})`).call(d3.axisBottom(x));
+    g.append('g').call(d3.axisLeft(y));
+  }
+  function drawPie(dat){
+    const div=d3.select('#pie');div.selectAll('svg').remove();
+    const r=150;const svg=div.append('svg').attr('width',r*2).attr('height',r*2);
+    const g=svg.append('g').attr('transform',`translate(${r},${r})`);
+    const counts=d3.rollup(dat,v=>v.length,d=>d.explicit?'Explicit':'Clean');
+    const pie=d3.pie().value(d=>d[1])(Array.from(counts));
+    const arc=d3.arc().innerRadius(0).outerRadius(r);
+    g.selectAll('path').data(pie).enter().append('path')
+      .attr('d',arc).attr('fill',(d,i)=>['#ff7f0e','#1f77b4'][i])
+      .attr('class','pieArc').append('title').text(d=>`${d.data[0]} ${d.data[1]}`);
+  }
+  function drawDumbbell(dat){
+    const div=d3.select('#dumbbell');div.selectAll('svg').remove();
+    const m={t:20,r:20,b:40,l:100},w=div.node().clientWidth-m.l-m.r,h=350-m.t-m.b;
+    const grp=d3.rollups(dat,v=>({e:d3.mean(v.filter(d=>d.explicit),d=>d.rating)||0,
+                                   c:d3.mean(v.filter(d=>!d.explicit),d=>d.rating)||0}),d=>d.genre)
+               .sort((a,b)=>b[1].e-b[1].c).slice(0,7);
+    const x=d3.scaleLinear().domain([0,d3.max(grp,d=>Math.max(d[1].e,d[1].c))]).range([0,w]);
+    const y=d3.scaleBand().domain(grp.map(d=>d[0])).range([0,h]).padding(0.4);
+    const svg=div.append('svg').attr('width',w+m.l+m.r).attr('height',h+m.t+m.b);
+    const g=svg.append('g').attr('transform',`translate(${m.l},${m.t})`);
+    g.selectAll('.line').data(grp).enter().append('line').attr('class','dumb-line')
+      .attr('y1',d=>y(d[0])+y.bandwidth()/2).attr('y2',d=>y(d[0])+y.bandwidth()/2)
+      .attr('x1',d=>x(d[1].c)).attr('x2',d=>x(d[1].e));
+    g.selectAll('.c1').data(grp).enter().append('circle').attr('class','bar2')
+      .attr('cy',d=>y(d[0])+y.bandwidth()/2).attr('cx',d=>x(d[1].c)).attr('r',5);
+    g.selectAll('.c2').data(grp).enter().append('circle').attr('class','bar')
+      .attr('cy',d=>y(d[0])+y.bandwidth()/2).attr('cx',d=>x(d[1].e)).attr('r',5);
+    g.append('g').attr('transform',`translate(0,${h})`).call(d3.axisBottom(x));
+    g.append('g').call(d3.axisLeft(y));
+  }
+});
+</script>
+</body>
+</html>
